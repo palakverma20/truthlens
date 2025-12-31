@@ -1,2 +1,1 @@
-# truthlens
-TruthLens is a web-based AI tool that helps users identify and understand manipulative language in online messages.
+TruthLens is a web-based AI application that helps users identify and understand manipulative language in online messages. Powered by Google Gemini, it analyzes message intent, emotional pressure, and persuasion patterns to generate a manipulation risk score along with clear, human-friendly explanations. By focusing on explainability rather than simple labeling, TruthLens promotes digital awareness and critical thinking, helping users recognize urgency, fear, authority, and financial pressure before reacting.
