@@ -96,15 +96,19 @@ def analyze():
         mood_emoji, mood_label, mood_class = calculate_mood(score)
 
         # Run emotion, logic, and pattern agents in parallel
-        with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
+        '''with concurrent.futures.ThreadPoolExecutor(max_workers=3) as executor:
             emotion_future = executor.submit(emotion_agent, text, model)
             logic_future = executor.submit(logic_agent, text, model)
             pattern_future = executor.submit(pattern_agent, text, model)
 
             # Get results as they complete (don't wait for all)
-            emotion = emotion_future.result(timeout=30)
-            logic = logic_future.result(timeout=30)
-            pattern = pattern_future.result(timeout=30)
+            emotion = emotion_future.result(timeout=60)
+            logic = logic_future.result(timeout=60)
+            pattern = pattern_future.result(timeout=60)'''
+        emotion = emotion_agent(text, model)
+        logic = logic_agent(text, model)
+        pattern = pattern_agent(text, model)
+
 
         # Generate explanation with combined results
         explanation = explain_agent(emotion, logic, pattern, model)
@@ -135,5 +139,6 @@ def analyze():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
