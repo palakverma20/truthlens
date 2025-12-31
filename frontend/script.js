@@ -59,7 +59,7 @@ analyzeBtn.addEventListener('click', async () => {
         const controller = new AbortController();
         const timeoutId = setTimeout(() => controller.abort(), 35000);
         
-        const response = await fetch('/analyze', {
+        const response = await fetch('https://truthlens-backend-dgxw.onrender.com/analyze', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ text }),
@@ -179,3 +179,4 @@ function displayResults(data) {
         resultsSection.offsetHeight;
     }, 10);
 }
+
