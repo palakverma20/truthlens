@@ -1,0 +1,54 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <title>Sign up – TruthLens</title>
+    <link rel="stylesheet" href="signup.css">
+  </head>
+  <body style="text-align: center; margin-top: 100px">
+    <div class="signup-container">
+      <h1>Welcome to TruthLens</h1>
+      <p>Sign in to continue</p>
+
+      <button class="google-btn" onclick="login()">Continue with Google</button>
+
+      <div class="footer-text">Secure login • No passwords stored</div>
+    </div>
+
+    <script type="module">
+      // 1️⃣ Import Firebase
+      import { initializeApp } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-app.js";
+      import {
+        getAuth,
+        GoogleAuthProvider,
+        signInWithPopup,
+      } from "https://www.gstatic.com/firebasejs/10.7.1/firebase-auth.js";
+
+      // 2️⃣ Firebase config (from Firebase Console)
+      const firebaseConfig = {
+        apiKey: "AIzaSyBuNFD8eoqt5acIgcSMN7SxbWeHeCjaJgo",
+        authDomain: "truthlens-2.firebaseapp.com",
+        projectId: "truthlens-2",
+        appId: "1:973455378592:web:bc034830dccbc849fd61c5",
+      };
+
+      // 3️⃣ CREATE Firebase App (MOST IMPORTANT)
+      const app = initializeApp(firebaseConfig);
+
+      // 4️⃣ NOW get auth (AFTER app exists)
+      const auth = getAuth(app);
+
+      const provider = new GoogleAuthProvider();
+
+      // 5️⃣ Login function
+      window.login = function () {
+        signInWithPopup(auth, provider)
+          .then(() => {
+            window.location.href = "index.html";
+          })
+          .catch((error) => {
+            alert(error.message);
+          });
+      };
+    </script>
+  </body>
+</html>
