@@ -3,8 +3,8 @@ flask-cors
 python-dotenv
 google-genai
 PyPDF2
-pillow
-pytesseract
+
+
 
 
 
