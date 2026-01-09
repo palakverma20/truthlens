@@ -34,6 +34,11 @@ MODEL_NAME = "google/gemini-2.0-flash-exp:free"
 # ---------------------------
 # Model wrapper (unchanged usage)
 # ---------------------------
+class OpenRouterResponse:
+    def __init__(self, text):
+        self.text = text
+
+
 class ModelWrapper:
     def generate_content(self, prompt: str):
         headers = {
@@ -58,8 +63,8 @@ class ModelWrapper:
         )
         response.raise_for_status()
 
-        return response.json()["choices"][0]["message"]["content"]
-
+        content = response.json()["choices"][0]["message"]["content"]
+        return OpenRouterResponse(content)
 
 model = ModelWrapper()
 
@@ -169,3 +174,4 @@ def analyze():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
