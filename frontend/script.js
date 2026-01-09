@@ -41,6 +41,18 @@ const errorMessage = document.getElementById("errorMessage");
 // =======================
 messageInput.addEventListener("input", () => {
   charCount.textContent = messageInput.value.length;
+
+  // Clear file if user starts typing
+  if (fileInput && fileInput.value) {
+    fileInput.value = "";
+  }
+});
+
+fileInput?.addEventListener("change", () => {
+  if (fileInput.files.length > 0) {
+    messageInput.value = "";
+    charCount.textContent = "0";
+  }
 });
 
 // =======================
@@ -57,6 +69,7 @@ analyzeBtn.addEventListener("click", async () => {
 
   analyzeBtn.disabled = true;
   showLoading();
+  hideError();
   hideResults();
   hideError();
 
@@ -65,6 +78,24 @@ analyzeBtn.addEventListener("click", async () => {
     const timeoutId = setTimeout(() => controller.abort(), 35000);
 
     let response;
+
+    if (file) {
+  const allowedTypes = [
+    "text/plain",
+    "application/pdf",
+    "image/png",
+    "image/jpeg"
+  ];
+
+  if (!allowedTypes.includes(file.type)) {
+    showError("Unsupported file type. Please upload PDF, TXT, or Image.");
+    hideLoading();
+    analyzeBtn.disabled = false;
+    return;
+  }
+}
+
+
 
     // =======================
     // CASE 1: FILE UPLOAD
@@ -131,6 +162,7 @@ analyzeBtn.addEventListener("click", async () => {
 // =======================
 // UI HELPERS
 // =======================
+
 function showLoading() {
   loadingState.classList.remove("hidden");
 }
@@ -209,3 +241,4 @@ function displayResults(data) {
 
   resultsSection.classList.remove("hidden");
 }
+
