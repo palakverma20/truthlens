@@ -9,8 +9,6 @@ from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 
 import PyPDF2
-from PIL import Image
-import pytesseract
 import json
 
 load_dotenv()
@@ -63,7 +61,7 @@ def serve_index():
     return send_from_directory("../frontend", "index.html")
 
 # ---------------------------
-# Helper: extract text
+# Helper: extract text (TXT + PDF ONLY)
 # ---------------------------
 def extract_text_from_file(file):
     filename = secure_filename(file.filename)
@@ -79,17 +77,14 @@ def extract_text_from_file(file):
         for page in reader.pages:
             text += page.extract_text() or ""
 
-    elif ext in ["png", "jpg", "jpeg"]:
-        image = Image.open(file).convert("RGB")  # 👈 tiny but important
-        text = pytesseract.image_to_string(image)
-
     else:
-        return None, "Unsupported file type. Please upload TXT, PDF, or Image."
+        return None, "Unsupported file type. Please upload TXT or PDF."
 
     return text.strip(), None
 
-import json
-
+# ---------------------------
+# Helper: extract JSON from AI text
+# ---------------------------
 def extract_json(text):
     try:
         start = text.index("{")
@@ -98,19 +93,20 @@ def extract_json(text):
     except Exception:
         return None
 
-
 # ---------------------------
-# Analyze route (MERGED AI)
+# Analyze route (SINGLE AI CALL)
 # ---------------------------
 @app.route("/analyze", methods=["POST"])
 def analyze():
     try:
         text = ""
 
+        # JSON text input
         if request.is_json:
             data = request.get_json()
             text = data.get("text", "").strip()
 
+        # File upload
         elif "file" in request.files:
             file = request.files["file"]
             if file.filename == "":
@@ -144,25 +140,24 @@ def analyze():
 You are an AI assistant that analyzes messages for manipulation.
 
 Analyze the following message and respond ONLY in valid JSON with these keys:
-- emotion: emotional tone and pressure
-- logic: logical fallacies or reasoning issues
-- pattern: manipulation or scam patterns
-- explanation: a clear human-readable explanation
+- emotion
+- logic
+- pattern
+- explanation
 
 Message:
 \"\"\"{text}\"\"\"
 """
 
         response = model.generate_content(prompt)
-
         raw_output = response.text.strip()
+
         ai_result = extract_json(raw_output)
         if not ai_result:
             return jsonify({
                 "error": "AI response parsing failed",
                 "raw_response": raw_output
             }), 500
-
 
         return jsonify({
             "input_text": text,
@@ -189,6 +184,3 @@ Message:
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
-
-
