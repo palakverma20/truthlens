@@ -88,6 +88,17 @@ def extract_text_from_file(file):
 
     return text.strip(), None
 
+import json
+
+def extract_json(text):
+    try:
+        start = text.index("{")
+        end = text.rindex("}") + 1
+        return json.loads(text[start:end])
+    except Exception:
+        return None
+
+
 # ---------------------------
 # Analyze route (MERGED AI)
 # ---------------------------
@@ -178,5 +189,6 @@ Message:
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
 
