@@ -10,13 +10,8 @@ from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
 
 import PyPDF2
-
-# NEW
 from PIL import Image
 import pytesseract
-import speech_recognition as sr
-from moviepy.editor import VideoFileClip
-import tempfile
 
 load_dotenv()
 
@@ -69,6 +64,7 @@ def serve_index():
 
 # ---------------------------
 # Helper: extract text from file
+# Supports TXT, PDF, IMAGE (OCR)
 # ---------------------------
 def extract_text_from_file(file):
     filename = secure_filename(file.filename)
@@ -88,28 +84,8 @@ def extract_text_from_file(file):
         image = Image.open(file)
         text = pytesseract.image_to_string(image)
 
-    elif ext in ["wav", "mp3", "m4a"]:
-        recognizer = sr.Recognizer()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
-            file.save(tmp.name)
-            with sr.AudioFile(tmp.name) as source:
-                audio = recognizer.record(source)
-                text = recognizer.recognize_google(audio)
-
-    elif ext in ["mp4", "mov", "avi"]:
-        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
-            file.save(tmp.name)
-            clip = VideoFileClip(tmp.name)
-            audio_path = tmp.name + ".wav"
-            clip.audio.write_audiofile(audio_path, verbose=False, logger=None)
-
-            recognizer = sr.Recognizer()
-            with sr.AudioFile(audio_path) as source:
-                audio = recognizer.record(source)
-                text = recognizer.recognize_google(audio)
-
     else:
-        return None, "Unsupported file type"
+        return None, "Unsupported file type. Please upload TXT, PDF, or Image."
 
     return text.strip(), None
 
@@ -121,15 +97,21 @@ def analyze():
     try:
         text = ""
 
+        # JSON text input
         if request.is_json:
             data = request.get_json()
             text = data.get("text", "").strip()
 
+        # File upload
         elif "file" in request.files:
             file = request.files["file"]
+            if file.filename == "":
+                return jsonify({"error": "No file uploaded"}), 400
+
             extracted_text, err = extract_text_from_file(file)
             if err:
                 return jsonify({"error": err}), 400
+
             text = extracted_text
 
         else:
@@ -141,6 +123,9 @@ def analyze():
         if len(text) > 5000:
             return jsonify({"error": "Text exceeds 5000 character limit"}), 400
 
+        # ---------------------------
+        # Scoring + AI analysis
+        # ---------------------------
         score, reasons, confidence = danger_score(text)
         mood_emoji, mood_label, mood_class = calculate_mood(score)
 
