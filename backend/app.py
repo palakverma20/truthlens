@@ -1,18 +1,22 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-import os
-import requests
-from dotenv import load_dotenv
+import google.genai as genai
 
+from agents import emotion_agent, logic_agent, pattern_agent, explain_agent
 from scoring import danger_score, calculate_mood
 
+import os
+from dotenv import load_dotenv
 from werkzeug.utils import secure_filename
+
 import PyPDF2
 
+# NEW
 from PIL import Image
 import pytesseract
-
-import json
+import speech_recognition as sr
+from moviepy.editor import VideoFileClip
+import tempfile
 
 load_dotenv()
 
@@ -25,50 +29,36 @@ app = Flask(
 CORS(app)
 
 # ---------------------------
-# OpenRouter config
+# Gemini initialization
 # ---------------------------
-OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
-OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
-MODEL_NAME = "google/gemini-2.0-flash-exp:free"
+client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
 
+available = list(client.models.list())
 
-# ---------------------------
-# Model wrapper
-# ---------------------------
-class OpenRouterResponse:
-    def __init__(self, text):
-        self.text = text
+model_name = None
+if any(m.name == "models/gemini-2.5-flash" for m in available):
+    model_name = "models/gemini-2.5-flash"
+else:
+    for m in available:
+        if "gemini" in m.name:
+            model_name = m.name
+            break
 
+if not model_name:
+    raise SystemExit("No generative Gemini model found.")
 
 class ModelWrapper:
+    def __init__(self, client, model_name):
+        self._client = client
+        self._model = model_name
+
     def generate_content(self, prompt: str):
-        headers = {
-            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
-            "Content-Type": "application/json",
-            "HTTP-Referer": "https://truthlens.app",
-            "X-Title": "TruthLens"
-        }
-
-        payload = {
-            "model": MODEL_NAME,
-            "messages": [
-                {"role": "user", "content": prompt}
-            ]
-        }
-
-        response = requests.post(
-            OPENROUTER_URL,
-            headers=headers,
-            json=payload,
-            timeout=60
+        return self._client.models.generate_content(
+            model=self._model,
+            contents=prompt
         )
-        response.raise_for_status()
 
-        content = response.json()["choices"][0]["message"]["content"]
-        return OpenRouterResponse(content)
-
-
-model = ModelWrapper()
+model = ModelWrapper(client, model_name)
 
 # ---------------------------
 # Serve frontend
@@ -77,9 +67,8 @@ model = ModelWrapper()
 def serve_index():
     return send_from_directory("../frontend", "index.html")
 
-
 # ---------------------------
-# Helper: extract text (TXT / PDF / IMAGE)
+# Helper: extract text from file
 # ---------------------------
 def extract_text_from_file(file):
     filename = secure_filename(file.filename)
@@ -99,74 +88,48 @@ def extract_text_from_file(file):
         image = Image.open(file)
         text = pytesseract.image_to_string(image)
 
+    elif ext in ["wav", "mp3", "m4a"]:
+        recognizer = sr.Recognizer()
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+            file.save(tmp.name)
+            with sr.AudioFile(tmp.name) as source:
+                audio = recognizer.record(source)
+                text = recognizer.recognize_google(audio)
+
+    elif ext in ["mp4", "mov", "avi"]:
+        with tempfile.NamedTemporaryFile(delete=False, suffix=f".{ext}") as tmp:
+            file.save(tmp.name)
+            clip = VideoFileClip(tmp.name)
+            audio_path = tmp.name + ".wav"
+            clip.audio.write_audiofile(audio_path, verbose=False, logger=None)
+
+            recognizer = sr.Recognizer()
+            with sr.AudioFile(audio_path) as source:
+                audio = recognizer.record(source)
+                text = recognizer.recognize_google(audio)
+
     else:
         return None, "Unsupported file type"
 
     return text.strip(), None
 
-
 # ---------------------------
-# Single AI analysis (MERGED AGENTS)
-# ---------------------------
-def run_merged_ai_analysis(text):
-    prompt = f"""
-You are TruthLens, an AI system that detects manipulation in messages.
-
-Analyze the message below and return a STRICT JSON object with these exact keys:
-- emotion
-- logic
-- pattern
-- explanation
-
-Rules:
-- Do NOT add markdown
-- Do NOT add extra text
-- Do NOT explain the JSON
-- Return only valid JSON
-
-Message:
-\"\"\"
-{text}
-\"\"\"
-"""
-
-    response = model.generate_content(prompt).text
-
-    try:
-        return json.loads(response)
-    except json.JSONDecodeError:
-        # Safe fallback if model slightly misbehaves
-        return {
-            "emotion": "Emotional manipulation detected.",
-            "logic": "Logical pressure tactics present.",
-            "pattern": "Common manipulation patterns observed.",
-            "explanation": response
-        }
-
-
-# ---------------------------
-# Analyze route (TEXT + FILE)
+# Analyze route
 # ---------------------------
 @app.route("/analyze", methods=["POST"])
 def analyze():
     try:
         text = ""
 
-        # JSON text input
         if request.is_json:
             data = request.get_json()
             text = data.get("text", "").strip()
 
-        # File upload
         elif "file" in request.files:
             file = request.files["file"]
-            if file.filename == "":
-                return jsonify({"error": "No file uploaded"}), 400
-
             extracted_text, err = extract_text_from_file(file)
             if err:
                 return jsonify({"error": err}), 400
-
             text = extracted_text
 
         else:
@@ -178,23 +141,20 @@ def analyze():
         if len(text) > 5000:
             return jsonify({"error": "Text exceeds 5000 character limit"}), 400
 
-        # ---------------------------
-        # Local scoring (fast, offline)
-        # ---------------------------
         score, reasons, confidence = danger_score(text)
         mood_emoji, mood_label, mood_class = calculate_mood(score)
 
-        # ---------------------------
-        # ONE AI CALL (merged agents)
-        # ---------------------------
-        ai_result = run_merged_ai_analysis(text)
+        emotion = emotion_agent(text, model)
+        logic = logic_agent(text, model)
+        pattern = pattern_agent(text, model)
+        explanation = explain_agent(emotion, logic, pattern, model)
 
         return jsonify({
             "input_text": text,
-            "emotion": ai_result["emotion"],
-            "logic": ai_result["logic"],
-            "pattern": ai_result["pattern"],
-            "explanation": ai_result["explanation"],
+            "emotion": emotion,
+            "logic": logic,
+            "pattern": pattern,
+            "explanation": explanation,
             "score": score,
             "reasons": reasons,
             "confidence": confidence,
@@ -207,7 +167,6 @@ def analyze():
 
     except Exception as e:
         return jsonify({"error": str(e)}), 500
-
 
 # ---------------------------
 # Run server
