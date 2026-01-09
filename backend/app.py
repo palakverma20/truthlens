@@ -2,7 +2,6 @@ from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 import google.genai as genai
 
-from agents import emotion_agent, logic_agent, pattern_agent, explain_agent
 from scoring import danger_score, calculate_mood
 
 import os
@@ -12,6 +11,7 @@ from werkzeug.utils import secure_filename
 import PyPDF2
 from PIL import Image
 import pytesseract
+import json
 
 load_dotenv()
 
@@ -63,8 +63,7 @@ def serve_index():
     return send_from_directory("../frontend", "index.html")
 
 # ---------------------------
-# Helper: extract text from file
-# Supports TXT, PDF, IMAGE (OCR)
+# Helper: extract text
 # ---------------------------
 def extract_text_from_file(file):
     filename = secure_filename(file.filename)
@@ -90,19 +89,17 @@ def extract_text_from_file(file):
     return text.strip(), None
 
 # ---------------------------
-# Analyze route
+# Analyze route (MERGED AI)
 # ---------------------------
 @app.route("/analyze", methods=["POST"])
 def analyze():
     try:
         text = ""
 
-        # JSON text input
         if request.is_json:
             data = request.get_json()
             text = data.get("text", "").strip()
 
-        # File upload
         elif "file" in request.files:
             file = request.files["file"]
             if file.filename == "":
@@ -124,22 +121,46 @@ def analyze():
             return jsonify({"error": "Text exceeds 5000 character limit"}), 400
 
         # ---------------------------
-        # Scoring + AI analysis
+        # Local scoring (FAST)
         # ---------------------------
         score, reasons, confidence = danger_score(text)
         mood_emoji, mood_label, mood_class = calculate_mood(score)
 
-        emotion = emotion_agent(text, model)
-        logic = logic_agent(text, model)
-        pattern = pattern_agent(text, model)
-        explanation = explain_agent(emotion, logic, pattern, model)
+        # ---------------------------
+        # ONE Gemini call
+        # ---------------------------
+        prompt = f"""
+You are an AI assistant that analyzes messages for manipulation.
+
+Analyze the following message and respond ONLY in valid JSON with these keys:
+- emotion: emotional tone and pressure
+- logic: logical fallacies or reasoning issues
+- pattern: manipulation or scam patterns
+- explanation: a clear human-readable explanation
+
+Message:
+\"\"\"{text}\"\"\"
+"""
+
+        response = model.generate_content(prompt)
+
+        raw_output = response.text.strip()
+
+        # Try to safely parse JSON
+        try:
+            ai_result = json.loads(raw_output)
+        except:
+            return jsonify({
+                "error": "AI response parsing failed",
+                "raw_response": raw_output
+            }), 500
 
         return jsonify({
             "input_text": text,
-            "emotion": emotion,
-            "logic": logic,
-            "pattern": pattern,
-            "explanation": explanation,
+            "emotion": ai_result.get("emotion", ""),
+            "logic": ai_result.get("logic", ""),
+            "pattern": ai_result.get("pattern", ""),
+            "explanation": ai_result.get("explanation", ""),
             "score": score,
             "reasons": reasons,
             "confidence": confidence,
