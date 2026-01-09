@@ -5,8 +5,8 @@ google-genai
 PyPDF2
 pillow
 pytesseract
-speechrecognition
-moviepy
+
+
 
 
 
