@@ -145,15 +145,13 @@ Message:
         response = model.generate_content(prompt)
 
         raw_output = response.text.strip()
-
-        # Try to safely parse JSON
-        try:
-            ai_result = json.loads(raw_output)
-        except:
+        ai_result = extract_json(raw_output)
+        if not ai_result:
             return jsonify({
                 "error": "AI response parsing failed",
                 "raw_response": raw_output
             }), 500
+
 
         return jsonify({
             "input_text": text,
@@ -180,3 +178,4 @@ Message:
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
