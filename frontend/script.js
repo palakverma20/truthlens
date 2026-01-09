@@ -75,7 +75,7 @@ analyzeBtn.addEventListener("click", async () => {
 
   try {
     const controller = new AbortController();
-    const timeoutId = setTimeout(() => controller.abort(), 35000);
+    const timeoutId = setTimeout(() => controller.abort(), 120000);
 
     let response;
 
@@ -241,4 +241,5 @@ function displayResults(data) {
 
   resultsSection.classList.remove("hidden");
 }
+
 
