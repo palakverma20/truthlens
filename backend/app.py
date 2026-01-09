@@ -1,18 +1,14 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-import google.genai as genai
 
 from agents import emotion_agent, logic_agent, pattern_agent, explain_agent
 from scoring import danger_score, calculate_mood
 
 import os
+import requests
 from dotenv import load_dotenv
 
-# NEW imports for file handling
 from werkzeug.utils import secure_filename
-import tempfile
-
-# Optional PDF support
 import PyPDF2
 
 load_dotenv()
@@ -26,36 +22,42 @@ app = Flask(
 CORS(app)
 
 # ---------------------------
-# Gemini initialization
+# OpenRouter configuration (NEW)
 # ---------------------------
-client = genai.Client(api_key=os.getenv("GEMINI_API_KEY"))
-
-available = list(client.models.list())
-
-model_name = None
-if any(m.name == "models/gemini-2.5-flash" for m in available):
-    model_name = "models/gemini-2.5-flash"
-else:
-    for m in available:
-        if "gemini" in m.name:
-            model_name = m.name
-            break
-
-if not model_name:
-    raise SystemExit("No generative Gemini model found.")
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
+OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
+MODEL_NAME = "google/gemini-2.0-flash-exp:free"
 
 class ModelWrapper:
-    def __init__(self, client, model_name):
-        self._client = client
-        self._model = model_name
+    def __init__(self):
+        pass
 
     def generate_content(self, prompt: str):
-        return self._client.models.generate_content(
-            model=self._model,
-            contents=prompt
-        )
+        headers = {
+            "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+            "Content-Type": "application/json",
+            "HTTP-Referer": "https://truthlens.app",
+            "X-Title": "TruthLens"
+        }
 
-model = ModelWrapper(client, model_name)
+        payload = {
+            "model": MODEL_NAME,
+            "messages": [
+                {"role": "user", "content": prompt}
+            ]
+        }
+
+        response = requests.post(
+            OPENROUTER_URL,
+            headers=headers,
+            json=payload,
+            timeout=60
+        )
+        response.raise_for_status()
+
+        return response.json()["choices"][0]["message"]["content"]
+
+model = ModelWrapper()
 
 # ---------------------------
 # Serve frontend
@@ -82,7 +84,6 @@ def extract_text_from_file(file):
             text += page.extract_text() or ""
 
     elif ext in ["png", "jpg", "jpeg"]:
-        # Placeholder for OCR (future upgrade)
         return None, "Image OCR not implemented yet"
 
     else:
@@ -98,12 +99,10 @@ def analyze():
     try:
         text = ""
 
-        # CASE 1: TEXT input (JSON)
         if request.is_json:
             data = request.get_json()
             text = data.get('text', '').strip()
 
-        # CASE 2: FILE upload (form-data)
         elif 'file' in request.files:
             file = request.files['file']
             if file.filename == "":
