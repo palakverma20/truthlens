@@ -1,43 +1,40 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
-
-from PIL import Image
-import pytesseract
-
-from agents import emotion_agent, logic_agent, pattern_agent, explain_agent
-from scoring import danger_score, calculate_mood
-
 import os
 import requests
 from dotenv import load_dotenv
 
+from agents import emotion_agent, logic_agent, pattern_agent, explain_agent
+from scoring import danger_score, calculate_mood
+
 from werkzeug.utils import secure_filename
 import PyPDF2
 
-load_dotenv()
+from PIL import Image
+import pytesseract
 
-# Uncomment if on Windows
-pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
+load_dotenv()
 
 app = Flask(
     __name__,
-    static_folder='../frontend',
-    static_url_path=''
+    static_folder="../frontend",
+    static_url_path=""
 )
 
 CORS(app)
 
 # ---------------------------
-# OpenRouter configuration (NEW)
+# OpenRouter config
 # ---------------------------
 OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY")
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL_NAME = "google/gemini-2.0-flash-exp:free"
 
-class ModelWrapper:
-    def __init__(self):
-        pass
 
+# ---------------------------
+# Model wrapper (unchanged usage)
+# ---------------------------
+class ModelWrapper:
     def generate_content(self, prompt: str):
         headers = {
             "Authorization": f"Bearer {OPENROUTER_API_KEY}",
@@ -63,26 +60,28 @@ class ModelWrapper:
 
         return response.json()["choices"][0]["message"]["content"]
 
+
 model = ModelWrapper()
 
 # ---------------------------
 # Serve frontend
 # ---------------------------
-@app.route('/')
+@app.route("/")
 def serve_index():
-    return send_from_directory('../frontend', 'index.html')
+    return send_from_directory("../frontend", "index.html")
+
 
 # ---------------------------
-# Helper: extract text from file
+# Helper: extract text (TXT / PDF / IMAGE)
 # ---------------------------
 def extract_text_from_file(file):
     filename = secure_filename(file.filename)
-    ext = filename.lower().split('.')[-1]
+    ext = filename.lower().split(".")[-1]
 
     text = ""
 
     if ext == "txt":
-        text = file.read().decode("utf-8")
+        text = file.read().decode("utf-8", errors="ignore")
 
     elif ext == "pdf":
         reader = PyPDF2.PdfReader(file)
@@ -90,47 +89,51 @@ def extract_text_from_file(file):
             text += page.extract_text() or ""
 
     elif ext in ["png", "jpg", "jpeg"]:
-        return None, "Image OCR not implemented yet"
+        image = Image.open(file)
+        text = pytesseract.image_to_string(image)
 
     else:
         return None, "Unsupported file type"
 
     return text.strip(), None
 
+
 # ---------------------------
 # Analyze route (TEXT + FILE)
 # ---------------------------
-@app.route('/analyze', methods=['POST'])
+@app.route("/analyze", methods=["POST"])
 def analyze():
     try:
         text = ""
 
+        # JSON text input
         if request.is_json:
             data = request.get_json()
-            text = data.get('text', '').strip()
+            text = data.get("text", "").strip()
 
-        elif 'file' in request.files:
-            file = request.files['file']
+        # File upload
+        elif "file" in request.files:
+            file = request.files["file"]
             if file.filename == "":
-                return jsonify({'error': 'No file uploaded'}), 400
+                return jsonify({"error": "No file uploaded"}), 400
 
             extracted_text, err = extract_text_from_file(file)
             if err:
-                return jsonify({'error': err}), 400
+                return jsonify({"error": err}), 400
 
             text = extracted_text
 
         else:
-            return jsonify({'error': 'No input provided'}), 400
+            return jsonify({"error": "No input provided"}), 400
 
         if not text:
-            return jsonify({'error': 'Extracted text is empty'}), 400
+            return jsonify({"error": "Extracted text is empty"}), 400
 
         if len(text) > 5000:
-            return jsonify({'error': 'Text exceeds 5000 character limit'}), 400
+            return jsonify({"error": "Text exceeds 5000 character limit"}), 400
 
         # ---------------------------
-        # Scoring + AI analysis
+        # Local scoring + AI agents
         # ---------------------------
         score, reasons, confidence = danger_score(text)
         mood_emoji, mood_label, mood_class = calculate_mood(score)
@@ -138,27 +141,27 @@ def analyze():
         emotion = emotion_agent(text, model)
         logic = logic_agent(text, model)
         pattern = pattern_agent(text, model)
-
         explanation = explain_agent(emotion, logic, pattern, model)
 
         return jsonify({
-            'input_text': text,
-            'emotion': emotion,
-            'logic': logic,
-            'pattern': pattern,
-            'explanation': explanation,
-            'score': score,
-            'reasons': reasons,
-            'confidence': confidence,
-            'mood': {
-                'emoji': mood_emoji,
-                'label': mood_label,
-                'class': mood_class
+            "input_text": text,
+            "emotion": emotion,
+            "logic": logic,
+            "pattern": pattern,
+            "explanation": explanation,
+            "score": score,
+            "reasons": reasons,
+            "confidence": confidence,
+            "mood": {
+                "emoji": mood_emoji,
+                "label": mood_label,
+                "class": mood_class
             }
         })
 
     except Exception as e:
-        return jsonify({'error': str(e)}), 500
+        return jsonify({"error": str(e)}), 500
+
 
 # ---------------------------
 # Run server
@@ -166,4 +169,3 @@ def analyze():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
-
