@@ -80,7 +80,7 @@ def extract_text_from_file(file):
             text += page.extract_text() or ""
 
     elif ext in ["png", "jpg", "jpeg"]:
-        image = Image.open(file)
+        image = Image.open(file).convert("RGB")  # 👈 tiny but important
         text = pytesseract.image_to_string(image)
 
     else:
@@ -178,4 +178,5 @@ Message:
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
 
