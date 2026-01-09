@@ -1,6 +1,9 @@
 from flask import Flask, request, jsonify, send_from_directory
 from flask_cors import CORS
 
+from PIL import Image
+import pytesseract
+
 from agents import emotion_agent, logic_agent, pattern_agent, explain_agent
 from scoring import danger_score, calculate_mood
 
@@ -12,6 +15,9 @@ from werkzeug.utils import secure_filename
 import PyPDF2
 
 load_dotenv()
+
+# Uncomment if on Windows
+pytesseract.pytesseract.tesseract_cmd = r"C:\Program Files\Tesseract-OCR\tesseract.exe"
 
 app = Flask(
     __name__,
@@ -160,3 +166,4 @@ def analyze():
 if __name__ == "__main__":
     port = int(os.environ.get("PORT", 5000))
     app.run(host="0.0.0.0", port=port)
+
